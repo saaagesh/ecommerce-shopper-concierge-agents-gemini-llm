@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@types/react-speech-recognition": "^3.9.6",
+    "bootstrap": "^5.3.7",
+    "bootstrap-icons": "^1.13.1",
+    "framer-motion": "^12.22.0",
+    "next": "^15.3.4",
+    "ogl": "^1.0.11",
+    "react-speech-recognition": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.10",
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}

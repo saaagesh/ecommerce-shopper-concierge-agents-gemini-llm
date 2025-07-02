@@ -1,0 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+.home-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 5rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.homepage-content {
+  position: relative;
+  z-index: 1;
+}
