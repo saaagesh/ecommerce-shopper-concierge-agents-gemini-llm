@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"app/AuroraClient.tsx -> ./Aurora\":{\"id\":\"app/AuroraClient.tsx -> ./Aurora\",\"files\":[\"static/css/_app-pages-browser_src_app_Aurora_js.css\",\"static/chunks/_app-pages-browser_src_app_Aurora_js.js\"]}}"

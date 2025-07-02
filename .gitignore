@@ -14,3 +14,6 @@ coverage
 *.env.test.local
 *.env.production.local
 backend/config.py
+
+# Python cache
+backend/__pycache__/

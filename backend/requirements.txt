@@ -1,0 +1,7 @@
+fastapi
+pydantic
+requests
+google-generativeai
+google-cloud-aiplatform
+python-dotenv
+google-adk

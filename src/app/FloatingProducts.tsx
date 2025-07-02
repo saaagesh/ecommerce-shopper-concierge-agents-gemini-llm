@@ -10,6 +10,10 @@ const products = [
   { icon: 'bi-smartwatch', name: 'Watch' },
   { icon: 'bi-tablet', name: 'Tablet' },
   { icon: 'bi-headphones', name: 'Headphones' },
+  { icon: 'bi-camera', name: 'Camera' }, 
+  { icon: 'bi-keyboard', name: 'Keyboard' }, 
+  { icon: 'bi-mouse', name: 'Mouse' },
+  { icon: 'bi-display', name: 'Monitor' }, 
 ];
 
 /*
@@ -57,7 +61,7 @@ const FloatingProducts = () => {
             ease: 'easeInOut',
           }}
         >
-          <i className={`bi ${product.icon}`} style={{ fontSize: '3rem' }}></i>
+          <i className={`bi ${product.icon}`} style={{ fontSize: '6rem' }}></i>
         </motion.div>
       ))}
     </div>
