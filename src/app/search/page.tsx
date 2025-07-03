@@ -99,19 +99,61 @@ export default function SearchPage() {
 
         {/* Right Panel: Product Display */}
         <div className="col-md-8 p-3 overflow-auto" style={{ height: '100vh' }}>
-          <div className="row">
-            {allProducts.map((product, index) => (
-              <div key={index} className={index === 0 ? "col-md-8 mb-4" : "col-md-4 mb-4"}>
-                <div className="card h-100 border" style={{ backgroundColor: '#2d2d30', borderColor: '#444' }}>
-                  <img src={product.img_url} className="card-img-top" alt={product.name} style={{ height: index === 0 ? '400px' : '200px', objectFit: 'cover' }} />
-                  <div className="card-body text-white">
-                    <h5 className="card-title">{product.name}</h5>
-                    <p className="card-text">{product.description}</p>
+          {/* First Row: 1 large, 2 small vertical */}
+          {allProducts.length > 0 && (
+            <div className="row">
+              {/* Large Image */}
+              <div className="col-md-6 mb-4">
+                <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '400px' }}>
+                  <img src={allProducts[0].img_url} className="card-img h-100" alt={allProducts[0].name} style={{ objectFit: 'cover' }} />
+                  <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                    <h5 className="card-title">{allProducts[0].name}</h5>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+              {/* 2 Small Images (Vertical) */}
+              {allProducts.length > 1 && (
+                <div className="col-md-6 mb-4">
+                  <div className="row">
+                    <div className="col-12 mb-4">
+                      <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
+                        <img src={allProducts[1].img_url} className="card-img h-100" alt={allProducts[1].name} style={{ objectFit: 'cover' }} />
+                        <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                          <h5 className="card-title">{allProducts[1].name}</h5>
+                        </div>
+                      </div>
+                    </div>
+                    {allProducts.length > 2 && (
+                      <div className="col-12">
+                        <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
+                          <img src={allProducts[2].img_url} className="card-img h-100" alt={allProducts[2].name} style={{ objectFit: 'cover' }} />
+                          <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                            <h5 className="card-title">{allProducts[2].name}</h5>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Remainder of the images */}
+          {allProducts.length > 3 && (
+            <div className="row">
+              {allProducts.slice(3).map((product, index) => (
+                <div key={index} className="col-md-4 mb-4">
+                  <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '250px' }}>
+                    <img src={product.img_url} className="card-img h-100" alt={product.name} style={{ objectFit: 'cover' }} />
+                    <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                      <h5 className="card-title">{product.name}</h5>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Log Console Button */}
@@ -137,4 +179,3 @@ export default function SearchPage() {
     </div>
   );
 }
-

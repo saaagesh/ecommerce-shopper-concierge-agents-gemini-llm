@@ -1,0 +1,133 @@
+.chroma-grid {
+  --x: 50%;
+  --y: 50%;
+  --r: 300px;
+  --cols: 3;
+  --rows: 2;
+  position: relative;
+  display: grid;
+  place-items: center;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+.chroma-card {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+  --card-border: transparent;
+  --card-gradient: transparent;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  z-index: 2;
+  transition: transform 0.3s ease;
+}
+
+.chroma-card:hover {
+  transform: scale(1.05);
+}
+
+.chroma-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    250px circle at var(--mouse-x) var(--mouse-y),
+    var(--card-gradient),
+    transparent 80%
+  );
+  border-radius: inherit;
+  z-index: 1;
+  transition: opacity 0.5s;
+  opacity: 0;
+}
+
+.chroma-card:hover::before {
+  opacity: 1;
+}
+
+.chroma-card .chroma-img-wrapper {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 0.875rem;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.chroma-card .chroma-img-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chroma-card .chroma-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  color: white;
+  z-index: 3;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+}
+
+.chroma-card:hover .chroma-info {
+  transform: translateY(0);
+}
+
+.chroma-info .name {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.chroma-info .handle {
+  font-size: 0.875rem;
+  color: #aaa;
+}
+
+.chroma-info .role {
+  font-size: 1rem;
+  margin-top: 0.5rem;
+}
+
+.chroma-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at var(--x) var(--y),
+    transparent,
+    rgba(0, 0, 0, 0.9) var(--r)
+  );
+  z-index: 1;
+  pointer-events: none;
+}
+
+.chroma-fade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 3;
+  pointer-events: none;
+  opacity: 1;
+}
