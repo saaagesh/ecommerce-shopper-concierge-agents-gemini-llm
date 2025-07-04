@@ -19,8 +19,8 @@ export default function SearchPage() {
     browserSupportsSpeechRecognition
   } = useSpeechRecognition();
   const [inputValue, setInputValue] = useState('');
-  const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
     setInputValue(transcript);
@@ -30,39 +30,33 @@ export default function SearchPage() {
     return <span>Browser doesn't support speech recognition.</span>;
   }
 
+  const [products, setProducts] = useState<Product[]>([]);
+
   const handleSendMessage = async () => {
     if (inputValue.trim() !== '') {
       const newMessages = [...messages, { text: inputValue, sender: 'user' as 'user' }];
       setMessages(newMessages);
-      const query = inputValue;
-      setInputValue('');
-      resetTranscript();
-      setLogs([]); // Clear previous logs
 
-      const eventSource = new EventSource(`http://localhost:8000/chat?query=${encodeURIComponent(query)}`);
-
+      const eventSource = new EventSource(`http://localhost:8000/chat?query=${inputValue}`);
       eventSource.onmessage = (event) => {
-        const parsedData = JSON.parse(event.data);
-
-        if (parsedData.type === 'log') {
-          setLogs(prevLogs => [...prevLogs, parsedData.data]);
-        } else if (parsedData.type === 'result') {
-          const { intro_text, products } = parsedData.data;
-          // Add the bot's introductory message to the chat
+        const data = JSON.parse(event.data);
+        if (data.type === 'log') {
+          setLogs(prev => [...prev, data.data]);
+        } else if (data.type === 'result') {
+          const { intro_text, products } = data.data;
           setMessages(prevMessages => [...prevMessages, { text: intro_text, sender: 'bot', products }]);
-          eventSource.close();
+          setProducts(products || []);
         }
       };
-
-      eventSource.onerror = (err) => {
-        console.error("EventSource failed:", err);
-        setLogs(prevLogs => [...prevLogs, "Error receiving stream from server."]);
+      eventSource.onerror = (error) => {
+        setLogs(prev => [...prev, 'EventSource error: ' + error.toString()]);
         eventSource.close();
       };
+
+      setInputValue('');
+      resetTranscript();
     }
   };
-
-  const allProducts = messages.flatMap(msg => msg.products || []);
 
   return (
     <div className="container-fluid vh-100 d-flex flex-column" style={{ backgroundColor: '#121212', color: '#e0e0e0' }}>
@@ -100,35 +94,35 @@ export default function SearchPage() {
         {/* Right Panel: Product Display */}
         <div className="col-md-8 p-3 overflow-auto" style={{ height: '100vh' }}>
           {/* First Row: 1 large, 2 small vertical */}
-          {allProducts.length > 0 && (
+          {products.length > 0 && (
             <div className="row">
               {/* Large Image */}
               <div className="col-md-6 mb-4">
                 <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '400px' }}>
-                  <img src={allProducts[0].img_url} className="card-img h-100" alt={allProducts[0].name} style={{ objectFit: 'cover' }} />
+                  <img src={products[0].img_url} className="card-img h-100" alt={products[0].name} style={{ objectFit: 'cover' }} />
                   <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
-                    <h5 className="card-title">{allProducts[0].name}</h5>
+                    <h5 className="card-title">{products[0].name}</h5>
                   </div>
                 </div>
               </div>
               {/* 2 Small Images (Vertical) */}
-              {allProducts.length > 1 && (
+              {products.length > 1 && (
                 <div className="col-md-6 mb-4">
                   <div className="row">
                     <div className="col-12 mb-4">
                       <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
-                        <img src={allProducts[1].img_url} className="card-img h-100" alt={allProducts[1].name} style={{ objectFit: 'cover' }} />
+                        <img src={products[1].img_url} className="card-img h-100" alt={products[1].name} style={{ objectFit: 'cover' }} />
                         <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
-                          <h5 className="card-title">{allProducts[1].name}</h5>
+                          <h5 className="card-title">{products[1].name}</h5>
                         </div>
                       </div>
                     </div>
-                    {allProducts.length > 2 && (
+                    {products.length > 2 && (
                       <div className="col-12">
                         <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
-                          <img src={allProducts[2].img_url} className="card-img h-100" alt={allProducts[2].name} style={{ objectFit: 'cover' }} />
+                          <img src={products[2].img_url} className="card-img h-100" alt={products[2].name} style={{ objectFit: 'cover' }} />
                           <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
-                            <h5 className="card-title">{allProducts[2].name}</h5>
+                            <h5 className="card-title">{products[2].name}</h5>
                           </div>
                         </div>
                       </div>
@@ -140,9 +134,9 @@ export default function SearchPage() {
           )}
 
           {/* Remainder of the images */}
-          {allProducts.length > 3 && (
+          {products.length > 3 && (
             <div className="row">
-              {allProducts.slice(3).map((product, index) => (
+              {products.slice(3).map((product, index) => (
                 <div key={index} className="col-md-4 mb-4">
                   <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '250px' }}>
                     <img src={product.img_url} className="card-img h-100" alt={product.name} style={{ objectFit: 'cover' }} />

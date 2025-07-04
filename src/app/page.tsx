@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import "./HomePage.css";
 import Aurora from "./AuroraClient";
@@ -22,9 +23,14 @@ export default function HomePage() {
           />
         </div>
         <p>Tailor your shopping experience with an AI concierge agent</p>
-        <Link href="/search" className="btn btn-primary">
-          Click to get started
-        </Link>
+        <div className="d-flex justify-content-center align-items-center">
+          <Link href="/search" className="btn btn-primary me-3">
+            Text-Only Conversation
+          </Link>
+          <Link href="/live" className="btn btn-secondary me-3">
+            Live Interaction
+          </Link>
+        </div>
       </div>
     </div>
   );

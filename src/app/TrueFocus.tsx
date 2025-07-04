@@ -46,7 +46,7 @@ const TrueFocus: React.FC<TrueFocusProps> = ({
           }}
           animate={{
             filter: `blur(${index === focusedIndex ? 0 : blurAmount}px)`,
-            borderColor: index === focusedIndex ? borderColor : 'transparent',
+            borderColor: index === focusedIndex ? borderColor : '#00000000',
           }}
           transition={{ duration: animationDuration }}
         >

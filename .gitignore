@@ -17,3 +17,8 @@ backend/config.py
 
 # Python cache
 backend/__pycache__/
+
+# Virtual environments
+venv/
+venv2/
+venv3/
