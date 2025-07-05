@@ -2,538 +2,383 @@
 import "bootstrap-icons/font/bootstrap-icons.css";
 import { useState, useEffect, useRef } from 'react';
 
+// This is a direct translation of the sample audio client, with added product handling.
 class AudioClient {
-    constructor(serverUrl = 'ws://localhost:8000') {
+    serverUrl: string;
+    ws: WebSocket | null;
+    audioContext: AudioContext | null;
+    recorder: { source: MediaStreamAudioSourceNode; processor: ScriptProcessorNode; stream: MediaStream } | null;
+    isRecording: boolean;
+    isConnected: boolean;
+    onReady: () => void;
+    onAudioReceived: (data: any) => void;
+    onTextReceived: (text: string, isUser: boolean) => void;
+    onProductsReceived: (products: any[]) => void;
+    onTurnComplete: () => void;
+    onBotSpeechStart: () => void;
+    onBotSpeechEnd: () => void;
+    onError: (error: any) => void;
+    audioQueue: ArrayBuffer[];
+    isPlaying: boolean;
+
+    constructor(serverUrl = 'ws://localhost:8765') {
         this.serverUrl = serverUrl;
         this.ws = null;
-        this.recorder = null;
         this.audioContext = null;
-        this.isConnected = false;
+        this.recorder = null;
         this.isRecording = false;
-        this.isModelSpeaking = false;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 3;
-        this.sessionId = null;
+        this.isConnected = false;
 
         // Callbacks
         this.onReady = () => {};
-        this.onAudioReceived = () => {};
-        this.onTextReceived = () => {};
+        this.onAudioReceived = (data) => {};
+        this.onTextReceived = (text, isUser) => {};
+        this.onProductsReceived = (products) => {};
         this.onTurnComplete = () => {};
-        this.onError = () => {};
-        this.onInterrupted = () => {};
-        this.onSessionIdReceived = (sessionId) => {};
+        this.onBotSpeechStart = () => {};
+        this.onBotSpeechEnd = () => {};
+        this.onError = (error) => {};
 
-        // Audio playback
+        // Audio playback queue
         this.audioQueue = [];
         this.isPlaying = false;
-        this.currentSource = null;
-
-        // Clean up any existing audioContexts
-        if (window.existingAudioContexts) {
-            window.existingAudioContexts.forEach(ctx => {
-                try {
-                    ctx.close();
-                } catch (e) {
-                    console.error("Error closing existing audio context:", e);
-                }
-            });
-        }
-
-        // Keep track of audio contexts created
-        window.existingAudioContexts = window.existingAudioContexts || [];
     }
-    
-    // Connect to the WebSocket server
+
     async connect() {
-        // Close existing connection if any
-        if (this.ws) {
-            try {
-                this.ws.close();
-            } catch (e) {
-                console.error("Error closing WebSocket:", e);
-            }
-        }
-
-        // Reset reconnect attempts if this is a new connection
-        if (this.reconnectAttempts > this.maxReconnectAttempts) {
-            this.reconnectAttempts = 0;
-        }
-
-        return new Promise((resolve, reject) => {
-            try {
-                this.ws = new WebSocket(this.serverUrl);
-
-                const connectionTimeout = setTimeout(() => {
-                    if (!this.isConnected) {
-                        console.error('WebSocket connection timed out');
-                        this.tryReconnect();
-                        reject(new Error('Connection timeout'));
-                    }
-                }, 5000);
-
-                this.ws.onopen = () => {
-                    console.log('WebSocket connection established');
-                    clearTimeout(connectionTimeout);
-                    this.reconnectAttempts = 0; // Reset on successful connection
-                };
-
-                this.ws.onclose = (event) => {
-                    console.log('WebSocket connection closed:', event.code, event.reason);
-                    this.isConnected = false;
-
-                    // Try to reconnect if it wasn't a normal closure
-                    if (event.code !== 1000 && event.code !== 1001) {
-                        this.tryReconnect();
-                    }
-                };
-
-                this.ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    clearTimeout(connectionTimeout);
-                    this.onError(error);
-                    reject(error);
-                };
-
-                this.ws.onmessage = async (event) => {
-                    try {
-                        // Log raw message data to help debug
-                        console.log('Raw WebSocket message received:', event.data);
-
-                        const message = JSON.parse(event.data);
-
-                        if (message.type === 'ready') {
-                            this.isConnected = true;
-                            this.onReady();
-                            resolve();
-                        }
-                        else if (message.type === 'audio') {
-                            // Handle receiving audio data from server
-                            const audioData = message.data;
-                            this.onAudioReceived(audioData);
-                            await this.playAudio(audioData);
-                        }
-                        else if (message.type === 'text') {
-                            // Handle receiving text from server
-                            this.onTextReceived(message.data);
-                        }
-                        else if (message.type === 'turn_complete') {
-                            // Model is done speaking
-                            this.isModelSpeaking = false;
-                            this.onTurnComplete();
-                        }
-                        else if (message.type === 'interrupted') {
-                            // Response was interrupted
-                            this.isModelSpeaking = false;
-                            this.onInterrupted(message.data);
-                        }
-                        else if (message.type === 'error') {
-                            // Handle server error
-                            this.onError(message.data);
-                        }
-                        else if (message.type === 'session_id') {
-                            // Handle session ID
-                            console.log('Received session ID message:', message);
-                            this.sessionId = message.data;
-                            this.onSessionIdReceived(message.data);
-                        }
-                    } catch (error) {
-                        console.error('Error processing message:', error);
-                    }
-                };
-            } catch (error) {
-                console.error('Error creating WebSocket:', error);
-                reject(error);
-            }
+        return new Promise<void>((resolve, reject) => {
+            this.ws = new WebSocket(this.serverUrl);
+            this.ws.onopen = () => {
+                this.isConnected = true;
+                this.onReady();
+                resolve();
+            };
+            this.ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                switch (message.type) {
+                    case 'audio':
+                        this.onAudioReceived(message.data);
+                        this.playAudio(message.data);
+                        break;
+                    case 'text':
+                        this.onTextReceived(message.data, this.isRecording);
+                        break;
+                    case 'products':
+                        this.onProductsReceived(message.data);
+                        break;
+                    case 'turn_complete':
+                        this.onTurnComplete();
+                        break;
+                    case 'bot_speech_start':
+                        this.onBotSpeechStart();
+                        break;
+                    case 'bot_speech_end':
+                        this.onBotSpeechEnd();
+                        break;
+                }
+            };
+            this.ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+                this.onError(error);
+            };
+            this.ws.onclose = () => {
+                this.isConnected = false;
+                console.log('WebSocket connection closed');
+            };
         });
     }
 
-    // Try to reconnect with exponential backoff
-    async tryReconnect() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('Max reconnection attempts reached');
-            return;
-        }
-
-        this.reconnectAttempts++;
-        const backoffTime = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
-
-        console.log(`Attempting to reconnect in ${backoffTime}ms (attempt ${this.reconnectAttempts})`);
-
-        setTimeout(async () => {
-            try {
-                await this.connect();
-                console.log('Reconnected successfully');
-            } catch (error) {
-                console.error('Reconnection failed:', error);
-            }
-        }, backoffTime);
-    }
-    
-    // Initialize the audio context and recorder
     async initializeAudio() {
-        try {
-            // Request microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-            // Reuse existing audio context if available or create a new one
-            if (!this.audioContext || this.audioContext.state === 'closed') {
-                console.log("Creating new audio context for recording");
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    sampleRate: 16000 // Match the sample rate expected by server
-                });
-
-                // Track this context for cleanup
-                window.existingAudioContexts = window.existingAudioContexts || [];
-                window.existingAudioContexts.push(this.audioContext);
-            }
-
-            // Create MediaStreamSource
-            const source = this.audioContext.createMediaStreamSource(stream);
-            
-            // Create ScriptProcessor for audio processing
-            const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-            
-            processor.onaudioprocess = (e) => {
-                if (!this.isRecording) return;
-                
-                // Get audio data
-                const inputData = e.inputBuffer.getChannelData(0);
-                
-                // Convert float32 to int16
-                const int16Data = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    int16Data[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)));
-                }
-                
-                // Send to server if connected
-                if (this.isConnected && this.isRecording) {
-                    const audioBuffer = new Uint8Array(int16Data.buffer);
-                    const base64Audio = this._arrayBufferToBase64(audioBuffer);
-                    
-                    this.ws.send(JSON.stringify({
-                        type: 'audio',
-                        data: base64Audio
-                    }));
-                }
-            };
-            
-            // Connect the audio nodes
-            source.connect(processor);
-            processor.connect(this.audioContext.destination);
-            
-            this.recorder = {
-                source: source,
-                processor: processor,
-                stream: stream
-            };
-            
-            return true;
-        } catch (error) {
-            console.error('Error initializing audio:', error);
-            this.onError(error);
-            return false;
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
         }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = this.audioContext.createMediaStreamSource(stream);
+        const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+            if (!this.isRecording) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const int16Data = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                int16Data[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)));
+            }
+            if (this.isConnected && this.ws) {
+                const audioBuffer = new Uint8Array(int16Data.buffer);
+                const base64Audio = this._arrayBufferToBase64(audioBuffer.buffer);
+                this.ws.send(JSON.stringify({ type: 'audio', data: base64Audio }));
+            }
+        };
+        source.connect(processor);
+        processor.connect(this.audioContext.destination);
+        this.recorder = { source, processor, stream };
     }
-    
-    // Start recording audio
+
     async startRecording() {
-        if (!this.recorder) {
-            const initialized = await this.initializeAudio();
-            if (!initialized) return false;
-        }
-        
-        if (!this.isConnected) {
-            try {
-                await this.connect();
-            } catch (error) {
-                console.error('Failed to connect to server:', error);
-                return false;
-            }
-        }
-        
+        if (!this.recorder) await this.initializeAudio();
         this.isRecording = true;
-        return true;
     }
-    
-    // Stop recording audio
+
     stopRecording() {
         this.isRecording = false;
-        
-        // Send end message to server
-        if (this.isConnected) {
-            this.ws.send(JSON.stringify({
-                type: 'end'
-            }));
-        }
-    }
-    
-    // Decode and play received audio
-    async playAudio(base64Audio) {
-        try {
-            // Decode the base64 audio data
-            const audioData = this._base64ToArrayBuffer(base64Audio);
-
-            // Create an audio context if needed
-            if (!this.audioContext || this.audioContext.state === 'closed') {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    sampleRate: 24000 // Match the sample rate received from server
-                });
-
-                // Track this context for cleanup
-                window.existingAudioContexts.push(this.audioContext);
-
-                // Limit the number of contexts we track to avoid memory issues
-                if (window.existingAudioContexts.length > 5) {
-                    const oldContext = window.existingAudioContexts.shift();
-                    try {
-                        if (oldContext && oldContext !== this.audioContext && oldContext.state !== 'closed') {
-                            oldContext.close();
-                        }
-                    } catch (e) {
-                        console.error("Error closing old audio context:", e);
-                    }
-                }
-            }
-
-            // Resume audio context if suspended
-            if (this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
-            }
-
-            // Add to audio queue
-            this.audioQueue.push(audioData);
-
-            // If not currently playing, start playback
-            if (!this.isPlaying) {
-                this.playNextInQueue();
-            }
-
-            // Set flag to indicate model is speaking
-            this.isModelSpeaking = true;
-        } catch (error) {
-            console.error('Error playing audio:', error);
-        }
     }
 
-    // Play next audio chunk from queue
+    playAudio(base64Audio: string) {
+        const audioData = this._base64ToArrayBuffer(base64Audio);
+        this.audioQueue.push(audioData);
+        if (!this.isPlaying) this.playNextInQueue();
+    }
+
     playNextInQueue() {
-        if (this.audioQueue.length === 0) {
+        if (this.audioQueue.length === 0 || !this.audioContext) {
             this.isPlaying = false;
             return;
         }
-
         this.isPlaying = true;
-
-        try {
-            // Stop any previous source if still active
-            if (this.currentSource) {
-                try {
-                    this.currentSource.onended = null; // Remove event listener
-                    this.currentSource.stop();
-                    this.currentSource.disconnect();
-                } catch (e) {
-                    // Ignore errors if already stopped
-                }
-                this.currentSource = null;
-            }
-
-            // Get next audio data from queue
-            const audioData = this.audioQueue.shift();
-
-            // Convert Int16Array to Float32Array for AudioBuffer
-            const int16Array = new Int16Array(audioData);
-            const float32Array = new Float32Array(int16Array.length);
-            for (let i = 0; i < int16Array.length; i++) {
-                float32Array[i] = int16Array[i] / 32768.0;
-            }
-
-            // Create an AudioBuffer
-            const audioBuffer = this.audioContext.createBuffer(1, float32Array.length, 24000);
-            audioBuffer.getChannelData(0).set(float32Array);
-
-            // Create a source node
-            const source = this.audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-
-            // Store reference to current source
-            this.currentSource = source;
-
-            // Connect to destination
-            source.connect(this.audioContext.destination);
-
-            // When this buffer ends, play the next one
-            source.onended = () => {
-                this.currentSource = null;
-                this.playNextInQueue();
-            };
-
-            // Start playing
-            source.start(0);
-        } catch (error) {
-            console.error('Error during audio playback:', error);
-            this.currentSource = null;
-            // Try next buffer on error
-            setTimeout(() => this.playNextInQueue(), 100);
+        const audioData = this.audioQueue.shift();
+        if (!audioData) {
+            this.playNextInQueue();
+            return;
         }
-    }
-    
-    // Interrupt current playback
-    interrupt() {
-        this.isModelSpeaking = false;
-
-        // Stop current audio source if active
-        if (this.currentSource) {
-            try {
-                this.currentSource.onended = null; // Remove event listener
-                this.currentSource.stop();
-                this.currentSource.disconnect();
-            } catch (e) {
-                // Ignore errors if already stopped
-            }
-            this.currentSource = null;
+        const int16Array = new Int16Array(audioData);
+        const float32Array = new Float32Array(int16Array.length);
+        for (let i = 0; i < int16Array.length; i++) {
+            float32Array[i] = int16Array[i] / 32768.0;
         }
-
-        // Clear queue and reset playing state
-        this.audioQueue = [];
-        this.isPlaying = false;
+        const audioBuffer = this.audioContext.createBuffer(1, float32Array.length, 24000); // Use 24000 for output sample rate
+        audioBuffer.getChannelData(0).set(float32Array);
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
+        source.onended = () => {
+            this.isPlaying = false;
+            this.playNextInQueue();
+        };
+        source.start(0);
     }
-    
-    // Cleanup resources
+
     close() {
-        this.stopRecording();
-
-        // Reset session ID
-        this.sessionId = null;
-
-        // Stop any audio playback
-        this.interrupt();
-        this.isModelSpeaking = false;
-
-        // Clean up recorder
+        this.isRecording = false;
         if (this.recorder) {
-            try {
-                this.recorder.stream.getTracks().forEach(track => track.stop());
-                this.recorder.source.disconnect();
-                this.recorder.processor.disconnect();
-                this.recorder = null;
-            } catch (e) {
-                console.error("Error cleaning up recorder:", e);
-            }
+            this.recorder.stream.getTracks().forEach(track => track.stop());
+            this.recorder.source.disconnect();
+            this.recorder.processor.disconnect();
         }
-
-        // Close audio context
-        if (this.audioContext && this.audioContext.state !== 'closed') {
-            try {
-                this.audioContext.close().catch(e => console.error("Error closing audio context:", e));
-            } catch (e) {
-                console.error("Error closing audio context:", e);
-            }
-        }
-
-        // Close WebSocket
-        if (this.ws) {
-            try {
-                if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-                    this.ws.close();
-                }
-                this.ws = null;
-            } catch (e) {
-                console.error("Error closing WebSocket:", e);
-            }
-        }
-
-        this.isConnected = false;
+        if (this.ws) this.ws.close();
     }
-    
-    // Utility: Convert ArrayBuffer to Base64
-    _arrayBufferToBase64(buffer) {
+
+    _arrayBufferToBase64(buffer: ArrayBuffer): string {
         let binary = '';
         const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
         return btoa(binary);
     }
-    
-    // Utility: Convert Base64 to ArrayBuffer
-    _base64ToArrayBuffer(base64) {
+
+    _base64ToArrayBuffer(base64: string): ArrayBuffer {
         const binaryString = atob(base64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
         return bytes.buffer;
     }
 }
 
 export default function LiveChat() {
-  const [messages, setMessages] = useState<{ text: string; sender: 'user' | 'bot' }[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const audioClientRef = useRef<AudioClient | null>(null);
+    const [messages, setMessages] = useState<{ text: string; sender: 'user' | 'bot' }[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
+    const [isRecording, setIsRecording] = useState(false);
+    const audioClientRef = useRef<AudioClient | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const isBotSpeaking = useRef(false);
 
-  useEffect(() => {
-    audioClientRef.current = new AudioClient('ws://localhost:8765');
-    audioClientRef.current.onReady = () => {
-      console.log('Audio client ready');
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
-    audioClientRef.current.onTextReceived = (text) => {
-      setMessages((prev) => [...prev, { text, sender: 'bot' }]);
+
+    useEffect(scrollToBottom, [messages]);
+
+    const [debugInfo, setDebugInfo] = useState<string>('');
+    const [showLogs, setShowLogs] = useState(false);
+    const [logs, setLogs] = useState<string[]>([]);
+
+    useEffect(() => {
+        audioClientRef.current = new AudioClient('ws://localhost:8765');
+        audioClientRef.current.onReady = () => {
+            console.log('Audio client ready');
+            setLogs(prev => [...prev, 'WebSocket connection established.']);
+        };
+        
+        audioClientRef.current.onBotSpeechStart = () => {
+            isBotSpeaking.current = true;
+            setMessages(prev => [...prev, { text: "", sender: 'bot' }]);
+        };
+
+        audioClientRef.current.onTextReceived = (text, isUser) => {
+            setMessages(prev => {
+                const lastMessage = prev[prev.length - 1];
+                if (isUser) {
+                    // If the last message was from the user, append to it. Otherwise, create a new message.
+                    if (lastMessage && lastMessage.sender === 'user') {
+                        const updatedMessages = [...prev];
+                        updatedMessages[updatedMessages.length - 1] = { ...lastMessage, text: lastMessage.text + text };
+                        return updatedMessages;
+                    }
+                    return [...prev, { text, sender: 'user' }];
+                }
+                
+                // For bot messages, append if the bot is speaking.
+                if (isBotSpeaking.current && lastMessage && lastMessage.sender === 'bot') {
+                    const updatedMessages = [...prev];
+                    updatedMessages[updatedMessages.length - 1] = { ...lastMessage, text: lastMessage.text + text };
+                    return updatedMessages;
+                }
+                
+                return [...prev, { text, sender: 'bot' }];
+            });
+        };
+
+        audioClientRef.current.onBotSpeechEnd = () => {
+            isBotSpeaking.current = false;
+        };
+
+        audioClientRef.current.onProductsReceived = (newProducts) => {
+            console.log("PRODUCTS RECEIVED ON FRONTEND:", newProducts);
+            setLogs(prev => [...prev, JSON.stringify(newProducts, null, 2)]);
+            setProducts(newProducts || []);
+        };
+
+        audioClientRef.current.onError = (error) => {
+            console.error("WebSocket Error:", error);
+            setLogs(prev => [...prev, `WebSocket Error: ${JSON.stringify(error)}`]);
+        };
+
+        audioClientRef.current.connect().catch(error => {
+            console.error("Connection failed:", error);
+            setLogs(prev => [...prev, `Connection failed: ${error}`]);
+        });
+
+        return () => {
+            audioClientRef.current?.close();
+            setLogs(prev => [...prev, 'WebSocket connection closed.']);
+        };
+    }, []);
+
+    const handleStartRecording = async () => {
+        if (audioClientRef.current) {
+            setProducts([]);
+            setLogs([]);
+            await audioClientRef.current.startRecording();
+            setIsRecording(true);
+        }
     };
-    audioClientRef.current.connect();
 
-    return () => {
-      audioClientRef.current?.close();
+    const handleStopRecording = () => {
+        if (audioClientRef.current) {
+            audioClientRef.current.stopRecording();
+            setIsRecording(false);
+        }
     };
-  }, []);
 
-  const handleStartRecording = async () => {
-    if (audioClientRef.current) {
-      await audioClientRef.current.startRecording();
-      setIsRecording(true);
-    }
-  };
-
-  const handleStopRecording = () => {
-    if (audioClientRef.current) {
-      audioClientRef.current.stopRecording();
-      setIsRecording(false);
-    }
-  };
-
-  return (
-    <div className="container-fluid vh-100 d-flex flex-column" style={{ backgroundColor: '#121212', color: '#e0e0e0' }}>
-      <div className="row flex-grow-1 position-relative overflow-hidden">
-        {/* Left Panel: Chat Interface */}
-        <div className="col-md-4 d-flex flex-column p-3 border-end" style={{ backgroundColor: '#1e1e1e', borderColor: '#333' }}>
-          <div className="flex-grow-1 mb-3 overflow-auto">
-            {messages.map((msg, index) => (
-              <div key={index} className={`p-2 ${msg.sender === 'user' ? 'text-end' : 'text-start'}`}>
-                <span className={`d-inline-block p-2 rounded ${msg.sender === 'user' ? 'bg-primary text-white' : ''}`} style={{ backgroundColor: msg.sender === 'bot' ? '#333' : '' }}>
-                  {msg.text}
-                </span>
+    return (
+        <div className="container-fluid vh-100 d-flex flex-column" style={{ backgroundColor: '#121212', color: '#e0e0e0' }}>
+            <div className="row flex-grow-1 position-relative overflow-hidden">
+                <div className="col-md-4 d-flex flex-column p-3 border-end" style={{ backgroundColor: '#1e1e1e', borderColor: '#333' }}>
+                    <div className="flex-grow-1 mb-3 overflow-auto">
+                        {messages.map((msg, index) => (
+                            <div key={index} className={`p-2 ${msg.sender === 'user' ? 'text-end' : 'text-start'}`}>
+                                <span className={`d-inline-block p-2 rounded ${msg.sender === 'user' ? 'bg-primary text-white' : ''}`} style={{ backgroundColor: msg.sender === 'bot' ? '#333' : '' }}>
+                                    {msg.text}
+                                </span>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
+                    <div className="d-flex justify-content-center align-items_center">
+                        <button
+                            className={`btn ${isRecording ? 'btn-danger' : 'btn-primary'}`}
+                            onMouseDown={handleStartRecording}
+                            onMouseUp={handleStopRecording}
+                            onTouchStart={handleStartRecording}
+                            onTouchEnd={handleStopRecording}
+                        >
+                            {isRecording ? 'Recording...' : 'Push to Talk'}
+                        </button>
+                    </div>
+                </div>
+                <div className="col-md-8 p-3 overflow-auto" style={{ height: '100vh' }}>
+          {/* First Row: 1 large, 2 small vertical */}
+          {products.length > 0 && (
+            <div className="row">
+              {/* Large Image */}
+              <div className="col-md-6 mb-4">
+                <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '400px' }}>
+                  <img src={products[0].img_url} className="card-img h-100" alt={products[0].name} style={{ objectFit: 'cover' }} />
+                  <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                    <h5 className="card-title">{products[0].name}</h5>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="d-flex justify-content-center align-items-center">
-            <button 
-              className={`btn ${isRecording ? 'btn-danger' : 'btn-primary'}`}
-              onMouseDown={handleStartRecording}
-              onMouseUp={handleStopRecording}
-              onTouchStart={handleStartRecording}
-              onTouchEnd={handleStopRecording}
-            >
-              {isRecording ? 'Recording...' : 'Push to Talk'}
-            </button>
-          </div>
+              {/* 2 Small Images (Vertical) */}
+              {products.length > 1 && (
+                <div className="col-md-6 mb-4">
+                  <div className="row">
+                    <div className="col-12 mb-4">
+                      <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
+                        <img src={products[1].img_url} className="card-img h-100" alt={products[1].name} style={{ objectFit: 'cover' }} />
+                        <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                          <h5 className="card-title">{products[1].name}</h5>
+                        </div>
+                      </div>
+                    </div>
+                    {products.length > 2 && (
+                      <div className="col-12">
+                        <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '188px' }}>
+                          <img src={products[2].img_url} className="card-img h-100" alt={products[2].name} style={{ objectFit: 'cover' }} />
+                          <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                            <h5 className="card-title">{products[2].name}</h5>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Remainder of the images */}
+          {products.length > 3 && (
+            <div className="row">
+              {products.slice(3).map((product, index) => (
+                <div key={index} className="col-md-4 mb-4">
+                  <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '250px' }}>
+                    <img src={product.img_url} className="card-img h-100" alt={product.name} style={{ objectFit: 'cover' }} />
+                    <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                      <h5 className="card-title">{product.name}</h5>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Log Console Button */}
+        <div className="position-absolute top-0 end-0 p-3" style={{ zIndex: 1060 }}>
+          <button className="btn btn-info" onClick={() => setShowLogs(!showLogs)}>
+            <i className="bi bi-info-circle"></i>
+          </button>
         </div>
 
-        {/* Right Panel: Product Display (You can add product display logic here if needed) */}
-        <div className="col-md-8 p-3 overflow-auto" style={{ height: '100vh' }}>
+        {/* Log Console Panel */}
+        <div className={`position-absolute top-0 end-0 h-100 p-3 ${showLogs ? 'd-block' : 'd-none'}`} style={{ width: '450px', zIndex: 1050, backgroundColor: '#1e1e1e', borderLeft: '1px solid #333', transition: 'transform 0.3s ease-in-out', transform: showLogs ? 'translateX(0)' : 'translateX(100%)' }}>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h5 className="mb-0">Server Log Console</h5>
+              <button type="button" className="btn-close btn-close-white" onClick={() => setShowLogs(false)}></button>
+            </div>
+            <div className="h-100 overflow-auto" style={{maxHeight: 'calc(100vh - 100px)'}}>
+              <pre style={{ color: '#e0e0e0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                {logs.join('\n')}
+              </pre>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+            </div>
+        </div>
+    );
 }

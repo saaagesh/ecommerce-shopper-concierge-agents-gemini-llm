@@ -1,4 +1,3 @@
-
 import os
 import logging
 import asyncio
@@ -15,8 +14,7 @@ from starlette.responses import StreamingResponse
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.tools import google_search
+from shared_tools import find_shopping_items, research_agent_tool
 from google.genai import types as genai_types
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -116,7 +114,7 @@ shop_agent = Agent(
         {"intro_text": "...", "products": [{"name": "...", "description": "...", "img_url": "...", "url": "...", "id": "..."}]}
     ''',
     tools=[
-        AgentTool(agent=research_agent),
+        research_agent_tool,
         find_shopping_items,
     ],
 )
