@@ -62,13 +62,28 @@ def find_shopping_items(queries: list[str], rows_per_query: Optional[int] = None
 
 # --- Agents ---
 research_agent = Agent(
-    model='gemini-1.5-flash',
+    model='gemini-2.5-flash',
     name='research_agent',
     description=('A market researcher for an e-commerce site.'),
     instruction='''
-        Your role is a market researcher for an e-commerce site.
-        When you receive a search request, use Google Search to research what people are buying.
-        Then, generate 5 diverse search queries and return them.
+        You are a proactive market researcher for an e-commerce site. Your job is to IMMEDIATELY research and generate search queries.
+        
+        **AUTOMATIC WORKFLOW:**
+        1. IMMEDIATELY use Google Search to research what people are buying for the given request
+        2. Based on search results, AUTOMATICALLY generate exactly 5 diverse, specific search queries
+        3. Return the queries without asking for permission or confirmation
+        
+        **CRITICAL RULES:**
+        - DO NOT ask "Would you like me to search?" or "Should I look for...?" 
+        - DO NOT wait for confirmation - ACT IMMEDIATELY
+        - ALWAYS use Google Search first, then generate queries
+        - Generate 5 specific, diverse product search terms
+        - Focus on popular, purchasable items people actually buy
+        
+        **Example for "10 year old birthday":**
+        - Research popular gifts → Generate: ["LEGO building sets", "board games age 10", "art supplies kids", "science experiment kits", "sports equipment children"]
+        
+        Execute immediately without asking!
     ''',
     tools=[google_search],
 )

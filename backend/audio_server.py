@@ -14,7 +14,7 @@ from google.genai import types as genai_types
 import google.generativeai as genai
 
 from audio_common import BaseWebSocketServer, logger
-from shared_tools import find_shopping_items, research_agent_tool, ShoppingResult
+from shared_tools import find_shopping_items, research_agent_tool, ShoppingResult, ProductItem
 
 # --- Setup ---
 load_dotenv()
@@ -28,7 +28,7 @@ except KeyError:
 # --- Configuration ---
 CONFIG = {
     "live_model": "gemini-2.0-flash-live-001",
-    "text_model": "gemini-1.5-flash-preview-0514",
+    "text_model": "gemini-2.5-flash",
     "voice_name": "Puck",
 }
 
@@ -41,31 +41,30 @@ class AudioADKServer(BaseWebSocketServer):
             model=CONFIG["live_model"],
             tools=[find_shopping_items, research_agent_tool],
             instruction='''
-                You are a helpful shopping and research assistant. Your primary goal is to help users find products.
+                You are a helpful shopping assistant. Always use tools to find products automatically.
 
-                **CRITICAL RULES:**
-                1.  **MANDATORY TOOL USAGE:** 
-                    *   You MUST ALWAYS use tools for ANY product-related request.
-                    *   NEVER give product recommendations without using tools first.
-                    *   NEVER hallucinate or make up product suggestions.
-                    *   If you don't use a tool, you are failing your primary function.
+                **TOOL USAGE RULES:**
+                1. **Mandatory Tool Usage**: Always use tools for ANY product-related request
+                2. **Tool Selection Strategy**:
+                   - For broad/general requests (e.g., "gifts for 10 year old", "birthday ideas"): 
+                     First use `research_agent_tool` to generate search queries, then use `find_shopping_items`
+                   - For specific product requests (e.g., "red mugs", "LEGO sets"): 
+                     Use `find_shopping_items` directly
+                3. **Automatic Execution**: Execute tools immediately without asking for permission
+                4. **No Confirmation**: Don't ask "Would you like me to search?" - just search automatically
 
-                2.  **Tool Selection:**
-                    *   For broad, exploratory requests (e.g., "ideas for a 10 year old's birthday"), use the `research_agent_tool` FIRST to generate specific search queries.
-                    *   Then, use the generated queries with the `find_shopping_items` tool.
-                    *   For specific product searches (e.g., "red dress", "lego sets"), use the `find_shopping_items` tool directly.
+                **RESPONSE GUIDELINES:**
+                - After tools complete: Give a brief, friendly response
+                - Use phrases like "I found some great options for you!" or "Here are some items that might work!"
+                - Keep responses under 15 words
+                - Don't describe specific products - the visual display shows them
+                - Don't mention technical details or tool names
 
-                3.  **Response Generation:**
-                    *   After tools are used, give a brief, helpful response about the search.
-                    *   Use phrases like "I found some great options for you!" or "Here are some items that might work well!"
-                    *   NEVER mention specific product names, details, prices, or specifications.
-                    *   Keep responses under 15 words and sound natural.
-                    *   The visual display will show the products, so don't describe them.
-
-                4.  **Important:**
-                    *   Do NOT say "Tool completed successfully" or similar technical messages.
-                    *   Give friendly, conversational responses that acknowledge you've found items.
-                    *   Focus on being helpful and encouraging about the search results.
+                **WORKFLOW EXAMPLES:**
+                - "gifts for kids" → research_agent_tool → find_shopping_items → "Found some great options!"
+                - "coffee mugs" → find_shopping_items → "Here are some great mugs!"
+                
+                Always be helpful and execute searches automatically.
             ''',
         )
         self.session_service = InMemorySessionService()
