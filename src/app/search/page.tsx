@@ -21,6 +21,7 @@ export default function SearchPage() {
   const [inputValue, setInputValue] = useState('');
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     setInputValue(transcript);
@@ -36,20 +37,45 @@ export default function SearchPage() {
     if (inputValue.trim() !== '') {
       const newMessages = [...messages, { text: inputValue, sender: 'user' as 'user' }];
       setMessages(newMessages);
+      setIsSearching(true);
 
       const eventSource = new EventSource(`http://localhost:8000/chat?query=${inputValue}`);
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        console.log('Received event:', data); // Debug logging
+        
         if (data.type === 'log') {
           setLogs(prev => [...prev, data.data]);
+        } else if (data.type === 'products') {
+          // Products arrived immediately - update display
+          console.log('Setting products:', data.data);
+          setProducts(data.data || []);
+          setIsSearching(false);
+          setLogs(prev => [...prev, `Products received: ${data.data?.length || 0} items`]);
+        } else if (data.type === 'final_text') {
+          // Final intro text from agent
+          console.log('Received final_text:', data.data);
+          setMessages(prevMessages => {
+            const newMessages = [...prevMessages, { text: data.data, sender: 'bot' }];
+            console.log('Updated messages:', newMessages);
+            return newMessages;
+          });
+          setIsSearching(false);
+          setLogs(prev => [...prev, `Final text received: ${data.data}`]);
         } else if (data.type === 'result') {
+          // Legacy fallback for old format
+          console.log('Received legacy result:', data.data);
           const { intro_text, products } = data.data;
           setMessages(prevMessages => [...prevMessages, { text: intro_text, sender: 'bot', products }]);
           setProducts(products || []);
+          setIsSearching(false);
+        } else {
+          console.log('Unknown event type:', data.type, data);
         }
       };
       eventSource.onerror = (error) => {
         setLogs(prev => [...prev, 'EventSource error: ' + error.toString()]);
+        setIsSearching(false);
         eventSource.close();
       };
 
@@ -66,9 +92,15 @@ export default function SearchPage() {
           <div className="flex-grow-1 mb-3 overflow-auto">
             {messages.map((msg, index) => (
               <div key={index} className={`p-2 ${msg.sender === 'user' ? 'text-end' : 'text-start'}`}>
-                <span className={`d-inline-block p-2 rounded ${msg.sender === 'user' ? 'bg-primary text-white' : ''}`} style={{ backgroundColor: msg.sender === 'bot' ? '#333' : '' }}>
+                <div className={`d-inline-block p-2 rounded ${msg.sender === 'user' ? 'bg-primary text-white' : ''}`} style={{ 
+                  backgroundColor: msg.sender === 'bot' ? '#333' : '',
+                  direction: 'ltr',
+                  textAlign: 'left',
+                  maxWidth: '80%'
+                }}>
+                  <strong>{msg.sender === 'user' ? 'You: ' : 'Gemini: '}</strong>
                   {msg.text}
-                </span>
+                </div>
               </div>
             ))}
           </div>
@@ -92,9 +124,32 @@ export default function SearchPage() {
         </div>
 
         {/* Right Panel: Product Display */}
-        <div className="col-md-8 p-3 overflow-auto" style={{ height: '100vh' }}>
-          {/* First Row: 1 large, 2 small vertical */}
-          {products.length > 0 && (
+        <div className="col-md-8 p-3 overflow-auto position-relative" style={{ height: '100vh' }}>
+          {/* Loading Indicator */}
+          {isSearching && (
+            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style={{ backgroundColor: 'rgba(18, 18, 18, 0.8)', zIndex: 10 }}>
+              <div className="text-center text-primary">
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+                <h5 className="mt-3">Searching for products...</h5>
+              </div>
+            </div>
+          )}
+          
+          {/* Empty State */}
+          {products.length === 0 && !isSearching ? (
+            <div className="d-flex justify-content-center align-items-center h-100">
+              <div className="text-center text-muted">
+                <i className="bi bi-search" style={{ fontSize: '4rem' }}></i>
+                <h4 className="mt-3">No products to display</h4>
+                <p>Start a conversation to see product recommendations</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* First Row: 1 large, 2 small vertical */}
+              {products.length > 0 && (
             <div className="row">
               {/* Large Image */}
               <div className="col-md-6 mb-4">
@@ -133,20 +188,22 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Remainder of the images */}
-          {products.length > 3 && (
-            <div className="row">
-              {products.slice(3).map((product, index) => (
-                <div key={index} className="col-md-4 mb-4">
-                  <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '250px' }}>
-                    <img src={product.img_url} className="card-img h-100" alt={product.name} style={{ objectFit: 'cover' }} />
-                    <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
-                      <h5 className="card-title">{product.name}</h5>
+              {/* Remainder of the images */}
+              {products.length > 3 && (
+                <div className="row">
+                  {products.slice(3).map((product, index) => (
+                    <div key={index} className="col-md-4 mb-4">
+                      <div className="card text-white border" style={{ backgroundColor: '#2d2d30', borderColor: '#444', height: '250px' }}>
+                        <img src={product.img_url} className="card-img h-100" alt={product.name} style={{ objectFit: 'cover' }} />
+                        <div className="card-img-overlay d-flex flex-column justify-content-end" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 20%, transparent)'}}>
+                          <h5 className="card-title">{product.name}</h5>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
 

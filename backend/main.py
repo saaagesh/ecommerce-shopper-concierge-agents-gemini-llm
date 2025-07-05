@@ -14,6 +14,7 @@ from starlette.responses import StreamingResponse
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.adk.tools import google_search
 from shared_tools import find_shopping_items, research_agent_tool
 from google.genai import types as genai_types
 import google.generativeai as genai
@@ -107,11 +108,21 @@ shop_agent = Agent(
     description="A shopper's concierge for an e-commerce site",
     instruction='''
         Your role is a shopper's concierge.
+        
+        **Tool Usage:**
         - For broad requests (e.g., "birthday gift for a 10 year old"), use the `research_agent` to generate 5 queries, then use `find_shopping_items` with `rows_per_query=2` for each.
         - For direct searches (e.g., "mugs"), use `find_shopping_items` with `rows_per_query=10`.
         - For specific counts (e.g., "find 10 mugs"), use that number for `rows_per_query`.
-        Your entire response must be a single JSON object like:
-        {"intro_text": "...", "products": [{"name": "...", "description": "...", "img_url": "...", "url": "...", "id": "..."}]}
+        
+        **Response Format:**
+        After using tools, provide a friendly, helpful response. Your entire response must be a single JSON object like:
+        {"intro_text": "I found some great options for you! Take a look at these items.", "products": [{"name": "...", "description": "...", "img_url": "...", "url": "...", "id": "..."}]}
+        
+        **Response Guidelines:**
+        - Keep intro_text brief and conversational (under 15 words)
+        - Use phrases like "I found some great options for you!" or "Here are some items that might work well!"
+        - Be enthusiastic and helpful
+        - Don't describe specific products - just acknowledge the search was successful
     ''',
     tools=[
         research_agent_tool,
@@ -135,26 +146,146 @@ async def run_agent_and_stream_logs(query: str):
     )
     content = genai_types.Content(role='user', parts=[genai_types.Part(text=query)])
     final_response_text = None
+    products_sent = False
+    
     try:
         async for event in runner.run_async(user_id=config.USER_ID, session_id=session.id, new_message=content):
             log_json = json.dumps({"type": "log", "data": str(event)})
             yield f"data: {log_json}\n\n"
+            
+            # Enhanced tool execution detection - check multiple possible event structures
+            try:
+                event_str = str(event)
+                
+                # Check if this event contains function response or tool execution
+                if 'find_shopping_items' in event_str and not products_sent:
+                    yield f"data: {json.dumps({'type': 'log', 'data': f'DETECTED find_shopping_items in event: {event_str[:200]}...'})}\n\n"
+                    
+                    # Method 1: Check for function_response in content parts
+                    if hasattr(event, 'content') and event.content and hasattr(event.content, 'parts'):
+                        for part in event.content.parts:
+                            if hasattr(part, 'function_response') and part.function_response:
+                                func_response = part.function_response
+                                if func_response.name == "find_shopping_items":
+                                    yield f"data: {json.dumps({'type': 'log', 'data': 'Found function_response in content parts'})}\n\n"
+                                    try:
+                                        response_data = func_response.response
+                                        yield f"data: {json.dumps({'type': 'log', 'data': f'Function response data: {str(response_data)[:300]}...'})}\n\n"
+                                        
+                                        if 'result' in response_data:
+                                            result = response_data['result']
+                                            if hasattr(result, 'items') and result.items:
+                                                # Convert products to dict format and stream immediately
+                                                products_data = []
+                                                for item in result.items:
+                                                    if hasattr(item, 'dict'):
+                                                        products_data.append(item.dict())
+                                                    else:
+                                                        products_data.append({
+                                                            'name': getattr(item, 'name', 'Unknown'),
+                                                            'description': getattr(item, 'description', ''),
+                                                            'img_url': getattr(item, 'img_url', ''),
+                                                            'url': getattr(item, 'url', ''),
+                                                            'id': getattr(item, 'id', '')
+                                                        })
+                                                
+                                                # Stream products immediately
+                                                yield f"data: {json.dumps({'type': 'products', 'data': products_data})}\n\n"
+                                                products_sent = True
+                                                yield f"data: {json.dumps({'type': 'log', 'data': f'SUCCESS: Streamed {len(products_data)} products immediately'})}\n\n"
+                                    except Exception as e:
+                                        yield f"data: {json.dumps({'type': 'log', 'data': f'Error processing function_response: {e}'})}\n\n"
+                    
+                    # Method 2: Check for direct result in event (alternative structure)
+                    if hasattr(event, 'result') and not products_sent:
+                        yield f"data: {json.dumps({'type': 'log', 'data': 'Found direct result in event'})}\n\n"
+                        try:
+                            result = event.result
+                            if hasattr(result, 'items') and result.items:
+                                products_data = []
+                                for item in result.items:
+                                    if hasattr(item, 'dict'):
+                                        products_data.append(item.dict())
+                                    else:
+                                        products_data.append({
+                                            'name': getattr(item, 'name', 'Unknown'),
+                                            'description': getattr(item, 'description', ''),
+                                            'img_url': getattr(item, 'img_url', ''),
+                                            'url': getattr(item, 'url', ''),
+                                            'id': getattr(item, 'id', '')
+                                        })
+                                
+                                yield f"data: {json.dumps({'type': 'products', 'data': products_data})}\n\n"
+                                products_sent = True
+                                yield f"data: {json.dumps({'type': 'log', 'data': f'SUCCESS: Streamed {len(products_data)} products from direct result'})}\n\n"
+                        except Exception as e:
+                            yield f"data: {json.dumps({'type': 'log', 'data': f'Error processing direct result: {e}'})}\n\n"
+                    
+                    # Method 3: Parse from string representation as fallback
+                    if not products_sent and 'ShoppingResult' in event_str:
+                        yield f"data: {json.dumps({'type': 'log', 'data': 'Attempting to parse products from string representation'})}\n\n"
+                        try:
+                            # Try to extract product data from string representation
+                            # Look for items pattern in the string
+                            items_match = re.search(r"items=\[(.*?)\]", event_str, re.DOTALL)
+                            if items_match:
+                                yield f"data: {json.dumps({'type': 'log', 'data': 'Found items pattern in string'})}\n\n"
+                                # This is a fallback - we'll trigger product extraction from final response
+                        except Exception as e:
+                            yield f"data: {json.dumps({'type': 'log', 'data': f'Error parsing string representation: {e}'})}\n\n"
+                            
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'log', 'data': f'Error in enhanced detection: {e}'})}\n\n"
+            
             if event.is_final_response() and event.content and event.content.parts:
                 final_response_text = event.content.parts[0].text
+                
     except Exception as e:
         yield f"data: {json.dumps({'type': 'log', 'data': f'An error occurred: {e}'})}\n\n"
 
+    # Send final response and extract products if not already sent
+    yield f"data: {json.dumps({'type': 'log', 'data': f'Processing final response. Has final_response_text: {bool(final_response_text)}'})}\n\n"
+    
     if final_response_text:
+        yield f"data: {json.dumps({'type': 'log', 'data': f'Final response text: {final_response_text[:200]}...'})}\n\n"
         try:
             json_match = re.search(r'\{.*\}', final_response_text, re.DOTALL)
             if json_match:
-                yield f"data: {json.dumps({'type': 'result', 'data': json.loads(json_match.group(0))})}\n\n"
+                yield f"data: {json.dumps({'type': 'log', 'data': 'Found JSON in final response'})}\n\n"
+                parsed_response = json.loads(json_match.group(0))
+                intro_text = parsed_response.get('intro_text', 'I found some great options for you!')
+                yield f"data: {json.dumps({'type': 'log', 'data': f'Extracted intro_text: {intro_text}'})}\n\n"
+                
+                # If products weren't sent during streaming, send them now
+                if not products_sent and 'products' in parsed_response and parsed_response['products']:
+                    yield f"data: {json.dumps({'type': 'log', 'data': 'Sending products from final response'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'products', 'data': parsed_response['products']})}\n\n"
+                    products_sent = True
+                
+                # Always send a friendly response
+                if intro_text and intro_text.strip():
+                    yield f"data: {json.dumps({'type': 'log', 'data': f'Sending final_text: {intro_text}'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'final_text', 'data': intro_text})}\n\n"
+                else:
+                    # Fallback if no intro_text
+                    fallback_text = "Here are some items that might work well!" if products_sent else "I found some options for you!"
+                    yield f"data: {json.dumps({'type': 'log', 'data': f'Using fallback text: {fallback_text}'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'final_text', 'data': fallback_text})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'result', 'data': {'intro_text': final_response_text, 'products': []}})}\n\n"
-        except json.JSONDecodeError:
-            yield f"data: {json.dumps({'type': 'result', 'data': {'intro_text': 'Error decoding agent JSON.', 'products': []}})}\n\n"
+                yield f"data: {json.dumps({'type': 'log', 'data': 'No JSON found, sending raw final_response_text'})}\n\n"
+                yield f"data: {json.dumps({'type': 'final_text', 'data': final_response_text})}\n\n"
+        except json.JSONDecodeError as e:
+            yield f"data: {json.dumps({'type': 'log', 'data': f'JSON decode error: {e}'})}\n\n"
+            # If JSON parsing fails but we have products, give positive response
+            fallback_text = "Here are some great options for you!" if products_sent else "Search completed!"
+            yield f"data: {json.dumps({'type': 'final_text', 'data': fallback_text})}\n\n"
     else:
-        yield f"data: {json.dumps({'type': 'result', 'data': {'intro_text': 'Sorry, I couldn\'t find anything.', 'products': []}})}\n\n"
+        yield f"data: {json.dumps({'type': 'log', 'data': 'No final_response_text, using fallback'})}\n\n"
+        # No final response text, but provide appropriate message
+        final_text = "Here are some items that might work well!" if products_sent else "Sorry, I could not find anything."
+        yield f"data: {json.dumps({'type': 'final_text', 'data': final_text})}\n\n"
+    
+    yield f"data: {json.dumps({'type': 'log', 'data': 'Finished processing final response'})}\n\n"
 
 # --- Text API Endpoint ---
 @app.get("/chat")
