@@ -90,17 +90,7 @@ def find_shopping_items(queries: list[str], rows_per_query: Optional[int] = None
     return ShoppingResult(items=[ProductItem(**item) for item in all_items])
 
 # --- Agents ---
-research_agent = Agent(
-    model='gemini-1.5-flash',
-    name='research_agent',
-    description=('A market researcher for an e-commerce site.'),
-    instruction='''
-        Your role is a market researcher for an e-commerce site.
-        When you receive a search request, use Google Search to research what people are buying.
-        Then, generate 5 diverse search queries and return them.
-    ''',
-    tools=[google_search],
-)
+
 
 shop_agent = Agent(
     model='gemini-2.5-flash',
@@ -110,7 +100,7 @@ shop_agent = Agent(
         You are a proactive shopping concierge. IMMEDIATELY execute searches without asking for permission.
         
         **IMMEDIATE TOOL EXECUTION:**
-        - Broad requests (e.g., "birthday gifts"): INSTANTLY use `research_agent_tool`, then INSTANTLY use `find_shopping_items` with `rows_per_query=2`
+        - Broad requests (e.g., "birthday gifts"): INSTANTLY use `research_agent_tool`, then INSTANTLY use `find_shopping_items` with `rows_per_query=5`
         - Direct searches (e.g., "mugs"): INSTANTLY use `find_shopping_items` with `rows_per_query=10`
         - NEVER ask "Would you like me to search?" - Just DO IT immediately
         
@@ -133,6 +123,18 @@ shop_agent = Agent(
         research_agent_tool,
         find_shopping_items,
     ],
+)
+
+research_agent = Agent(
+    model='gemini-2.5-flash',
+    name='research_agent',
+    description=('A market researcher for an e-commerce site.'),
+    instruction='''
+        Your role is a market researcher for an e-commerce site.
+        When you receive a search request, use Google Search to research what people are buying.
+        Then, generate 5 diverse search queries and return them.
+    ''',
+    tools=[google_search],
 )
 
 # --- Text Endpoint Logic ---

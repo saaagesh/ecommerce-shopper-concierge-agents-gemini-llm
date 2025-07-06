@@ -348,6 +348,9 @@ class AudioADKServer(BaseWebSocketServer):
                         is_bot_speaking = False
                     await self._send_json(websocket, "turn_complete")
                     await self._send_log(websocket, "TURN COMPLETE")
+                    processed_tool_calls.clear()
+                    processed_function_responses.clear()
+                    await self._send_log(websocket, "Internal state cleared for next turn.")
 
         await asyncio.gather(handle_incoming_messages(), handle_outgoing_messages())
 

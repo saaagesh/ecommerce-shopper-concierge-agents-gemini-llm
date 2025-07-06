@@ -260,7 +260,8 @@ export default function LiveChat() {
             // Track search progress
             if (logMessage.includes("TOOL EXECUTION DETECTED: find_shopping_items")) {
                 setIsSearching(true);
-                setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SEARCH STARTED - Loading products...`]);
+                setProducts([]); // Clear previous products when a new search starts
+                setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SEARCH STARTED - Clearing old products and loading new ones...`]);
             } else if (logMessage.includes("PRODUCTS SENT SUCCESSFULLY")) {
                 setIsSearching(false);
                 setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SEARCH COMPLETED - Products displayed`]);
